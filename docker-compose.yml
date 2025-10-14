@@ -1,0 +1,64 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cpv-service-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - cpv-network
+    depends_on:
+      - db
+      - redis
+
+  nginx:
+    image: nginx:alpine
+    container_name: cpv-service-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+    networks:
+      - cpv-network
+    depends_on:
+      - app
+
+  db:
+    image: postgres:16-alpine
+    container_name: cpv-service-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cpv_service
+      POSTGRES_USER: cpv_user
+      POSTGRES_PASSWORD: cpv_secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - cpv-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: cpv-service-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - cpv-network
+
+networks:
+  cpv-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
