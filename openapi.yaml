@@ -34,6 +34,8 @@ tags:
     description: Health check and readiness endpoints
   - name: CPV Suggestion
     description: CPV code suggestion endpoints
+  - name: Bekanntmachungen
+    description: Public procurement announcements (Bekanntmachungen)
 
 paths:
   /api/healthz:
@@ -400,6 +402,155 @@ paths:
                     items:
                       type: string
 
+  /api/v1/bekanntmachungen:
+    get:
+      summary: List all Bekanntmachungen
+      description: |
+        Retrieves a paginated list of all procurement announcements (Bekanntmachungen),
+        sorted by publication date (newest first).
+      tags:
+        - Bekanntmachungen
+      parameters:
+        - name: limit
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+            example: 20
+        - name: page
+          in: query
+          description: Page number
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            example: 1
+      responses:
+        '200':
+          description: Successful response with paginated Bekanntmachungen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BekanntmachungListResponse'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/v1/bekanntmachungen/{id}:
+    get:
+      summary: Get a single Bekanntmachung by ID
+      description: Retrieves detailed information about a specific procurement announcement
+      tags:
+        - Bekanntmachungen
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Bekanntmachung ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Bekanntmachung'
+        '404':
+          description: Bekanntmachung not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: "Bekanntmachung not found"
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
+  /api/v1/bekanntmachungen/search:
+    post:
+      summary: Search Bekanntmachungen by CPV codes
+      description: |
+        Search for procurement announcements that match one or more CPV codes.
+        Results include all Bekanntmachungen that have at least one of the specified CPV codes.
+
+        ## Filtering Options
+        - **cpv_codes** (required): Array of 8-digit CPV codes
+        - **published_after/before**: Filter by publication date range
+        - **deadline_after**: Only include announcements with submission deadline after this date
+        - **typ**: Filter by procurement type (e.g., "Offenes Verfahren", "Verhandlungsverfahren")
+        - **min_value/max_value**: Filter by estimated contract value
+        - **limit**: Maximum number of results to return (default: 20, max: 100)
+      tags:
+        - Bekanntmachungen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BekanntmachungSearchRequest'
+            examples:
+              simple_search:
+                summary: Simple search by CPV code
+                value:
+                  cpv_codes: ["72000000"]
+                  limit: 10
+              advanced_search:
+                summary: Advanced search with filters
+                value:
+                  cpv_codes: ["72000000", "72200000"]
+                  published_after: "2025-09-01"
+                  deadline_after: "2025-11-01"
+                  min_value: 100000
+                  typ: "Offenes Verfahren"
+                  limit: 20
+              multi_cpv:
+                summary: Search with multiple CPV codes
+                value:
+                  cpv_codes: ["72000000", "45000000", "39100000"]
+                  limit: 50
+      responses:
+        '200':
+          description: Successful search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BekanntmachungSearchResponse'
+        '400':
+          description: Bad request - validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Unprocessable entity - validation failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  errors:
+                    type: object
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -412,7 +563,173 @@ components:
         Include the token in the Authorization header:
         `Authorization: Bearer YOUR_TOKEN`
 
+  responses:
+    RateLimitError:
+      description: Too many requests - rate limit exceeded (60 requests per minute)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: "Too Many Attempts."
+
   schemas:
+    Bekanntmachung:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier
+          example: 1
+        veroeffentlicht:
+          type: string
+          format: date
+          description: Publication date
+          example: "2025-10-01"
+        angebotsfrist:
+          type: string
+          format: date
+          nullable: true
+          description: Submission deadline
+          example: "2025-11-15"
+        kurzbezeichnung:
+          type: string
+          description: Short title of the procurement
+          example: "IT-Dienstleistungen für Verwaltungsmodernisierung"
+        typ:
+          type: string
+          description: Procurement type
+          enum:
+            - Offenes Verfahren
+            - Verhandlungsverfahren
+            - Nicht offenes Verfahren
+            - Wettbewerblicher Dialog
+          example: "Offenes Verfahren"
+        vergabeplattform:
+          type: string
+          description: Publication platform
+          example: "bund.de"
+        geschaetzter_auftragswert:
+          type: number
+          format: decimal
+          nullable: true
+          description: Estimated contract value in EUR
+          example: 250000.00
+        beschreibung:
+          type: string
+          nullable: true
+          description: Detailed description of the procurement
+          example: "Ausschreibung für umfassende IT-Beratungsleistungen zur Digitalisierung der Verwaltungsprozesse."
+        cpv_codes:
+          type: array
+          description: Associated CPV codes
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                pattern: '^\d{8}$'
+                description: 8-digit CPV code
+                example: "72000000"
+              title:
+                type: string
+                description: CPV code description
+                example: "IT-Dienste: Beratung, Software-Entwicklung, Internet und Hilfestellung."
+
+    BekanntmachungSearchRequest:
+      type: object
+      required:
+        - cpv_codes
+      properties:
+        cpv_codes:
+          type: array
+          description: Array of 8-digit CPV codes to search for
+          minItems: 1
+          items:
+            type: string
+            pattern: '^\d{8}$'
+            example: "72000000"
+        published_after:
+          type: string
+          format: date
+          description: Filter by publication date (from)
+          example: "2025-09-01"
+        published_before:
+          type: string
+          format: date
+          description: Filter by publication date (until)
+          example: "2025-12-31"
+        deadline_after:
+          type: string
+          format: date
+          description: Only include announcements with deadline after this date
+          example: "2025-11-01"
+        typ:
+          type: string
+          description: Filter by procurement type
+          example: "Offenes Verfahren"
+        min_value:
+          type: number
+          format: decimal
+          minimum: 0
+          description: Minimum estimated contract value in EUR
+          example: 100000
+        max_value:
+          type: number
+          format: decimal
+          minimum: 0
+          description: Maximum estimated contract value in EUR
+          example: 1000000
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+          description: Maximum number of results to return
+          example: 20
+
+    BekanntmachungSearchResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of results returned
+          example: 5
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Bekanntmachung'
+
+    BekanntmachungListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        count:
+          type: integer
+          description: Number of items on current page
+          example: 20
+        total:
+          type: integer
+          description: Total number of items
+          example: 49
+        current_page:
+          type: integer
+          example: 1
+        last_page:
+          type: integer
+          example: 3
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Bekanntmachung'
+
     CpvCode:
       type: object
       properties:
