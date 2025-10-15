@@ -26,26 +26,32 @@ class CpvCode extends Model
      * Calculate parent code from the code itself.
      * CPV hierarchy is encoded in the code structure.
      *
-     * CPV codes: XX000000 (div) -> XXYY0000 (group) -> XXYYZZ00 (class) -> XXYYZZKK (category) -> XXYYZZKKT (subcategory)
+     * CPV codes: XX000000 (div) -> XXYY0000 (group) -> XXYYZZ00 (class) -> XXYYZZKK (category)
+     *
+     * The parent is formed by setting the last non-zero digit to zero:
+     * - 72222300 -> 72222000 (last digit 3 -> 0)
+     * - 72222000 -> 72220000 (last digit 2 -> 0)
+     * - 72220000 -> 72200000 (last digit 2 -> 0)
+     * - 72200000 -> 72000000 (last digit 2 -> 0)
+     * - 72000000 -> null (level 1, no parent)
      */
     public function getParentCodeAttribute(): ?string
     {
-        // Remove trailing zeros to find significant digits
+        // Level 1 codes (XX000000) have no parent
+        if ($this->level === 1) {
+            return null;
+        }
+
+        // Remove trailing zeros to find significant part
         $trimmed = rtrim($this->code, '0');
 
-        // Level 1 codes have no parent (only 2 significant digits)
         if (strlen($trimmed) <= 2) {
-            return null;
+            return null; // Already at top level
         }
 
-        // Parent is formed by removing last 2 significant digits and padding with zeros
-        $parent = substr($trimmed, 0, -2);
-        $parentCode = str_pad($parent, 8, '0');
-
-        // Avoid self-reference
-        if ($parentCode === $this->code) {
-            return null;
-        }
+        // Set the last digit to 0 and pad back to 8 digits
+        $parentTrimmed = substr($trimmed, 0, -1) . '0';
+        $parentCode = str_pad($parentTrimmed, 8, '0');
 
         return $parentCode;
     }
