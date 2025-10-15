@@ -30,32 +30,78 @@ class CpvCodeSeeder extends Seeder
     private function seedFromCsv(string $path): void
     {
         $handle = fopen($path, 'r');
-        $header = fgetcsv($handle);
+        $header = fgetcsv($handle, 0, ';'); // Use semicolon delimiter
 
-        $codes = [];
-        while (($row = fgetcsv($handle)) !== false) {
-            $codes[] = [
-                'code' => $row[0],
-                'title' => $row[1],
-                'level' => $row[2] ?? $this->calculateLevel($row[0]),
-                'parent_code' => $row[3] ?? $this->getParentCode($row[0]),
+        $allCodes = [];
+        $seenCodes = [];
+
+        // First, collect all unique codes
+        while (($row = fgetcsv($handle, 0, ';')) !== false) {
+            // Skip empty rows
+            if (empty($row[0]) || empty($row[1])) {
+                continue;
+            }
+
+            // Extract code without the check digit (e.g., "03000000-1" -> "03000000")
+            $code = preg_replace('/-\d+$/', '', trim($row[0]));
+            $title = trim($row[1]);
+
+            // Skip if code is invalid or duplicate
+            if (strlen($code) !== 8 || isset($seenCodes[$code])) {
+                continue;
+            }
+
+            $seenCodes[$code] = true;
+            $level = $this->calculateLevel($code);
+
+            $allCodes[] = [
+                'code' => $code,
+                'title' => $title,
+                'level' => $level,
+                'parent_code' => $this->getParentCode($code),
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
+        }
 
-            // Insert in batches of 500
-            if (count($codes) >= 500) {
-                DB::table('cpv_codes')->insert($codes);
-                $codes = [];
+        fclose($handle);
+
+        // Sort by level to ensure parents are inserted before children
+        usort($allCodes, function($a, $b) {
+            return $a['level'] <=> $b['level'];
+        });
+
+        // Disable foreign key checks temporarily
+        DB::statement('ALTER TABLE cpv_codes DROP CONSTRAINT IF EXISTS cpv_codes_parent_code_foreign');
+
+        // Insert in batches
+        $batch = [];
+        foreach ($allCodes as $code) {
+            $batch[] = $code;
+
+            if (count($batch) >= 500) {
+                DB::table('cpv_codes')->insert($batch);
+                $batch = [];
             }
         }
 
         // Insert remaining codes
-        if (!empty($codes)) {
-            DB::table('cpv_codes')->insert($codes);
+        if (!empty($batch)) {
+            DB::table('cpv_codes')->insert($batch);
         }
 
-        fclose($handle);
+        // Fix invalid parent_code references (set to NULL if parent doesn't exist)
+        DB::statement('
+            UPDATE cpv_codes
+            SET parent_code = NULL
+            WHERE parent_code IS NOT NULL
+            AND parent_code NOT IN (SELECT code FROM cpv_codes)
+        ');
+
+        // Re-enable foreign key checks
+        DB::statement('ALTER TABLE cpv_codes ADD CONSTRAINT cpv_codes_parent_code_foreign FOREIGN KEY (parent_code) REFERENCES cpv_codes(code) ON DELETE CASCADE');
+
+        $this->command->info('Imported ' . count($allCodes) . ' unique CPV codes.');
     }
 
     /**
