@@ -35,7 +35,7 @@ class CpvCodeSeeder extends Seeder
         $allCodes = [];
         $seenCodes = [];
 
-        // First, collect all unique codes
+        // Collect all unique codes
         while (($row = fgetcsv($handle, 0, ';')) !== false) {
             // Skip empty rows
             if (empty($row[0]) || empty($row[1])) {
@@ -58,7 +58,6 @@ class CpvCodeSeeder extends Seeder
                 'code' => $code,
                 'title' => $title,
                 'level' => $level,
-                'parent_code' => $this->getParentCode($code),
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -66,15 +65,7 @@ class CpvCodeSeeder extends Seeder
 
         fclose($handle);
 
-        // Sort by level to ensure parents are inserted before children
-        usort($allCodes, function($a, $b) {
-            return $a['level'] <=> $b['level'];
-        });
-
-        // Disable foreign key checks temporarily
-        DB::statement('ALTER TABLE cpv_codes DROP CONSTRAINT IF EXISTS cpv_codes_parent_code_foreign');
-
-        // Insert in batches
+        // Insert in batches (no need to sort by level anymore)
         $batch = [];
         foreach ($allCodes as $code) {
             $batch[] = $code;
@@ -90,17 +81,6 @@ class CpvCodeSeeder extends Seeder
             DB::table('cpv_codes')->insert($batch);
         }
 
-        // Fix invalid parent_code references (set to NULL if parent doesn't exist)
-        DB::statement('
-            UPDATE cpv_codes
-            SET parent_code = NULL
-            WHERE parent_code IS NOT NULL
-            AND parent_code NOT IN (SELECT code FROM cpv_codes)
-        ');
-
-        // Re-enable foreign key checks
-        DB::statement('ALTER TABLE cpv_codes ADD CONSTRAINT cpv_codes_parent_code_foreign FOREIGN KEY (parent_code) REFERENCES cpv_codes(code) ON DELETE CASCADE');
-
         $this->command->info('Imported ' . count($allCodes) . ' unique CPV codes.');
     }
 
@@ -111,54 +91,54 @@ class CpvCodeSeeder extends Seeder
     {
         $codes = [
             // Level 1 - Divisions
-            ['code' => '70000000', 'title' => 'Dienstleistungen von Architektur-, Konstruktions- und Ingenieurbüros und Prüfstellen', 'level' => 1, 'parent_code' => null],
-            ['code' => '71000000', 'title' => 'Dienstleistungen von Architektur- und Ingenieurbüros sowie planungsbezogene Leistungen', 'level' => 1, 'parent_code' => null],
-            ['code' => '72000000', 'title' => 'IT-Dienste: Beratung, Software-Entwicklung, Internet und Hilfestellung', 'level' => 1, 'parent_code' => null],
-            ['code' => '73000000', 'title' => 'Forschung und Entwicklung sowie zugehörige Beratung', 'level' => 1, 'parent_code' => null],
-            ['code' => '75000000', 'title' => 'Dienstleistungen der öffentlichen Verwaltung, Verteidigung und Sozialversicherung', 'level' => 1, 'parent_code' => null],
-            ['code' => '79000000', 'title' => 'Dienstleistungen für Unternehmen: Recht, Marketing, Beratung, Einstellungen, Druck und Sicherheit', 'level' => 1, 'parent_code' => null],
-            ['code' => '80000000', 'title' => 'Allgemeine und berufliche Bildung', 'level' => 1, 'parent_code' => null],
+            ['code' => '70000000', 'title' => 'Dienstleistungen von Architektur-, Konstruktions- und Ingenieurbüros und Prüfstellen', 'level' => 1],
+            ['code' => '71000000', 'title' => 'Dienstleistungen von Architektur- und Ingenieurbüros sowie planungsbezogene Leistungen', 'level' => 1],
+            ['code' => '72000000', 'title' => 'IT-Dienste: Beratung, Software-Entwicklung, Internet und Hilfestellung', 'level' => 1],
+            ['code' => '73000000', 'title' => 'Forschung und Entwicklung sowie zugehörige Beratung', 'level' => 1],
+            ['code' => '75000000', 'title' => 'Dienstleistungen der öffentlichen Verwaltung, Verteidigung und Sozialversicherung', 'level' => 1],
+            ['code' => '79000000', 'title' => 'Dienstleistungen für Unternehmen: Recht, Marketing, Beratung, Einstellungen, Druck und Sicherheit', 'level' => 1],
+            ['code' => '80000000', 'title' => 'Allgemeine und berufliche Bildung', 'level' => 1],
 
             // Level 2 - Groups (IT Services)
-            ['code' => '72200000', 'title' => 'Softwareprogrammierung und -beratung', 'level' => 2, 'parent_code' => '72000000'],
-            ['code' => '72300000', 'title' => 'Datenverarbeitung', 'level' => 2, 'parent_code' => '72000000'],
-            ['code' => '72400000', 'title' => 'Internet-Dienste', 'level' => 2, 'parent_code' => '72000000'],
-            ['code' => '72500000', 'title' => 'Computereinrichtungen', 'level' => 2, 'parent_code' => '72000000'],
-            ['code' => '72600000', 'title' => 'Computerunterstützte Dienstleistungen', 'level' => 2, 'parent_code' => '72000000'],
+            ['code' => '72200000', 'title' => 'Softwareprogrammierung und -beratung', 'level' => 2],
+            ['code' => '72300000', 'title' => 'Datenverarbeitung', 'level' => 2],
+            ['code' => '72400000', 'title' => 'Internet-Dienste', 'level' => 2],
+            ['code' => '72500000', 'title' => 'Computereinrichtungen', 'level' => 2],
+            ['code' => '72600000', 'title' => 'Computerunterstützte Dienstleistungen', 'level' => 2],
 
             // Level 3 - Classes
-            ['code' => '72220000', 'title' => 'Beratung im Bereich Systeme und technische Beratung', 'level' => 3, 'parent_code' => '72200000'],
-            ['code' => '72230000', 'title' => 'Entwicklung von kundenspezifischer Software', 'level' => 3, 'parent_code' => '72200000'],
-            ['code' => '72240000', 'title' => 'Beratung und Entwicklung von Systemen und Software', 'level' => 3, 'parent_code' => '72200000'],
-            ['code' => '72250000', 'title' => 'System- und Unterstützungsdienstleistungen', 'level' => 3, 'parent_code' => '72200000'],
-            ['code' => '72260000', 'title' => 'Software-Beratung und -Bereitstellung', 'level' => 3, 'parent_code' => '72200000'],
-            ['code' => '72270000', 'title' => 'Wartung und Reparatur von Software', 'level' => 3, 'parent_code' => '72200000'],
+            ['code' => '72220000', 'title' => 'Beratung im Bereich Systeme und technische Beratung', 'level' => 3],
+            ['code' => '72230000', 'title' => 'Entwicklung von kundenspezifischer Software', 'level' => 3],
+            ['code' => '72240000', 'title' => 'Beratung und Entwicklung von Systemen und Software', 'level' => 3],
+            ['code' => '72250000', 'title' => 'System- und Unterstützungsdienstleistungen', 'level' => 3],
+            ['code' => '72260000', 'title' => 'Software-Beratung und -Bereitstellung', 'level' => 3],
+            ['code' => '72270000', 'title' => 'Wartung und Reparatur von Software', 'level' => 3],
 
             // Level 4 - Categories
-            ['code' => '72221000', 'title' => 'Beratung für Geschäftsanalysen', 'level' => 4, 'parent_code' => '72220000'],
-            ['code' => '72222000', 'title' => 'Beratung in Systemarchitektur und -Entwicklung', 'level' => 4, 'parent_code' => '72220000'],
-            ['code' => '72223000', 'title' => 'Beratung in Systembetrieb', 'level' => 4, 'parent_code' => '72220000'],
-            ['code' => '72224000', 'title' => 'Beratung in Projektmanagement', 'level' => 4, 'parent_code' => '72220000'],
+            ['code' => '72221000', 'title' => 'Beratung für Geschäftsanalysen', 'level' => 4],
+            ['code' => '72222000', 'title' => 'Beratung in Systemarchitektur und -Entwicklung', 'level' => 4],
+            ['code' => '72223000', 'title' => 'Beratung in Systembetrieb', 'level' => 4],
+            ['code' => '72224000', 'title' => 'Beratung in Projektmanagement', 'level' => 4],
 
             // Specific services
-            ['code' => '72222300', 'title' => 'Informationstechnische Beratungsdienste', 'level' => 5, 'parent_code' => '72222000'],
-            ['code' => '72224100', 'title' => 'Projektleitung für Bauprojekte im Bereich IT', 'level' => 5, 'parent_code' => '72224000'],
+            ['code' => '72222300', 'title' => 'Informationstechnische Beratungsdienste', 'level' => 5],
+            ['code' => '72224100', 'title' => 'Projektleitung für Bauprojekte im Bereich IT', 'level' => 5],
 
             // Business services
-            ['code' => '79100000', 'title' => 'Rechtsberatung und -vertretung', 'level' => 2, 'parent_code' => '79000000'],
-            ['code' => '79400000', 'title' => 'Unternehmens- und Managementberatung und zugehörige Dienste', 'level' => 2, 'parent_code' => '79000000'],
-            ['code' => '79410000', 'title' => 'Unternehmens- und Managementberatung', 'level' => 3, 'parent_code' => '79400000'],
-            ['code' => '79411000', 'title' => 'Allgemeine Managementberatung', 'level' => 4, 'parent_code' => '79410000'],
-            ['code' => '79421000', 'title' => 'Projektmanagement außer Bauarbeiten', 'level' => 4, 'parent_code' => '79410000'],
+            ['code' => '79100000', 'title' => 'Rechtsberatung und -vertretung', 'level' => 2],
+            ['code' => '79400000', 'title' => 'Unternehmens- und Managementberatung und zugehörige Dienste', 'level' => 2],
+            ['code' => '79410000', 'title' => 'Unternehmens- und Managementberatung', 'level' => 3],
+            ['code' => '79411000', 'title' => 'Allgemeine Managementberatung', 'level' => 4],
+            ['code' => '79421000', 'title' => 'Projektmanagement außer Bauarbeiten', 'level' => 4],
 
             // Construction
-            ['code' => '45000000', 'title' => 'Bauarbeiten', 'level' => 1, 'parent_code' => null],
-            ['code' => '45200000', 'title' => 'Bauarbeiten für Gebäude', 'level' => 2, 'parent_code' => '45000000'],
-            ['code' => '45300000', 'title' => 'Bauinstallationsarbeiten', 'level' => 2, 'parent_code' => '45000000'],
+            ['code' => '45000000', 'title' => 'Bauarbeiten', 'level' => 1],
+            ['code' => '45200000', 'title' => 'Bauarbeiten für Gebäude', 'level' => 2],
+            ['code' => '45300000', 'title' => 'Bauinstallationsarbeiten', 'level' => 2],
 
             // Healthcare
-            ['code' => '85000000', 'title' => 'Gesundheits- und Sozialwesen', 'level' => 1, 'parent_code' => null],
-            ['code' => '85100000', 'title' => 'Dienstleistungen des Gesundheitswesens', 'level' => 2, 'parent_code' => '85000000'],
+            ['code' => '85000000', 'title' => 'Gesundheits- und Sozialwesen', 'level' => 1],
+            ['code' => '85100000', 'title' => 'Dienstleistungen des Gesundheitswesens', 'level' => 2],
         ];
 
         foreach ($codes as &$code) {
@@ -180,17 +160,4 @@ class CpvCodeSeeder extends Seeder
         return (int) ceil(strlen($code) / 2);
     }
 
-    /**
-     * Get parent code based on hierarchy.
-     */
-    private function getParentCode(string $code): ?string
-    {
-        if (strlen($code) <= 2) {
-            return null;
-        }
-
-        // Remove trailing zeros and last 2 digits, then pad with zeros
-        $parent = substr($code, 0, -2);
-        return str_pad($parent, 8, '0');
-    }
 }
