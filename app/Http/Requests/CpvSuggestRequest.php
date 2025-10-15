@@ -24,6 +24,7 @@ class CpvSuggestRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:5000'],
             'language' => ['nullable', 'in:de,en,fr,it,es'],
             'top_k' => ['nullable', 'integer', 'min:1', 'max:25'],
+            'specificity' => ['nullable', 'integer', 'in:1,2,3'],
         ];
     }
 
@@ -40,6 +41,8 @@ class CpvSuggestRequest extends FormRequest
             'top_k.integer' => 'The top_k value must be an integer.',
             'top_k.min' => 'The top_k value must be at least 1.',
             'top_k.max' => 'The top_k value may not be greater than 25.',
+            'specificity.integer' => 'The specificity value must be an integer.',
+            'specificity.in' => 'The specificity value must be 1 (specific), 2 (medium), or 3 (general).',
         ];
     }
 

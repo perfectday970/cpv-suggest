@@ -42,9 +42,18 @@ class CpvCodeSeeder extends Seeder
                 continue;
             }
 
-            // Extract code without the check digit (e.g., "03000000-1" -> "03000000")
-            $code = preg_replace('/-\d+$/', '', trim($row[0]));
+            $fullCode = trim($row[0]);
             $title = trim($row[1]);
+
+            // Extract code and check digit (e.g., "03000000-1" -> code: "03000000", check: 1)
+            $checkDigit = null;
+            if (preg_match('/^(\d{8})-(\d)$/', $fullCode, $matches)) {
+                $code = $matches[1];
+                $checkDigit = (int) $matches[2];
+            } else {
+                // Fallback: just remove everything after hyphen
+                $code = preg_replace('/-.*$/', '', $fullCode);
+            }
 
             // Skip if code is invalid or duplicate
             if (strlen($code) !== 8 || isset($seenCodes[$code])) {
@@ -56,6 +65,7 @@ class CpvCodeSeeder extends Seeder
 
             $allCodes[] = [
                 'code' => $code,
+                'check_digit' => $checkDigit,
                 'title' => $title,
                 'level' => $level,
                 'created_at' => now(),

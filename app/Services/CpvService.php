@@ -224,6 +224,8 @@ PROMPT;
                 if ($code) {
                     $out[] = [
                         'cpv' => $code->code,
+                        'cpv_full' => $code->full_code,
+                        'check_digit' => $code->check_digit,
                         'title' => $code->title,
                         'level' => $code->level,
                         'path' => $this->formatPath($code->getPath()),
@@ -241,6 +243,8 @@ PROMPT;
                 if ($match && $match->cpvCode) {
                     $out[] = [
                         'cpv' => $match->cpvCode->code,
+                        'cpv_full' => $match->cpvCode->full_code,
+                        'check_digit' => $match->cpvCode->check_digit,
                         'title' => $match->cpvCode->title,
                         'level' => $match->cpvCode->level,
                         'path' => $this->formatPath($match->cpvCode->getPath()),
@@ -274,23 +278,169 @@ PROMPT;
     private function formatResponse(array $validated, array $input, array $warnings = []): array
     {
         $topK = $input['top_k'] ?? 12;
+        $specificity = $input['specificity'] ?? null;
         $codes = $validated['codes'] ?? [];
 
         // Remove duplicates and sort by confidence
         $unique = collect($codes)
             ->unique('cpv')
             ->sortByDesc('confidence')
-            ->take($topK)
-            ->values()
-            ->all();
+            ->values();
+
+        // Apply specificity filtering if requested
+        if ($specificity !== null && in_array($specificity, [1, 2, 3])) {
+            $unique = $this->applySpecificityFilter($unique, $specificity);
+        }
+
+        $result = $unique->take($topK)->all();
 
         return [
             'query_id' => bin2hex(random_bytes(8)),
             'language_detected' => $input['language'] ?? null,
-            'codes' => $unique,
+            'codes' => $result,
             'rationale' => $validated['rationale'] ?? '',
             'warnings' => $warnings,
             'cached' => false, // Updated by cache mechanism
         ];
+    }
+
+    /**
+     * Apply specificity filtering to codes.
+     *
+     * @param \Illuminate\Support\Collection $codes
+     * @param int $specificity 1=specific (high levels), 2=medium, 3=general (low levels)
+     * @return \Illuminate\Support\Collection
+     */
+    private function applySpecificityFilter($codes, int $specificity)
+    {
+        $totalCount = $codes->count();
+        $minimumCount = (int) ceil($totalCount * 0.5);
+
+        // Step 1: Parent-child deduplication
+        $deduplicated = $this->deduplicateParentChild($codes, $specificity);
+
+        // Step 2: Level filtering with dynamic expansion to meet minimum
+        $filtered = $this->filterByLevelWithMinimum($deduplicated, $specificity, $minimumCount);
+
+        return $filtered;
+    }
+
+    /**
+     * Remove parent-child duplicates based on specificity.
+     */
+    private function deduplicateParentChild($codes, int $specificity)
+    {
+        $result = collect();
+        $codeMap = $codes->keyBy('cpv');
+
+        foreach ($codes as $code) {
+            $cpvCode = $code['cpv'];
+            $shouldInclude = true;
+
+            // Check if this code has a parent or child in the list
+            $parentCode = $this->calculateParentCode($cpvCode);
+            $hasParentInList = $parentCode && $codeMap->has($parentCode);
+
+            $hasChildInList = $codeMap->keys()->contains(function($otherCode) use ($cpvCode) {
+                return $this->isParentOf($cpvCode, $otherCode);
+            });
+
+            // Decide based on specificity
+            if ($specificity === 1) {
+                // Specific: prefer children, exclude parents
+                if ($hasChildInList) {
+                    $shouldInclude = false;
+                }
+            } elseif ($specificity === 3) {
+                // General: prefer parents, exclude children
+                if ($hasParentInList) {
+                    $shouldInclude = false;
+                }
+            }
+            // specificity === 2: keep both (medium, no deduplication)
+
+            if ($shouldInclude) {
+                $result->push($code);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Filter by level with dynamic expansion to meet minimum count.
+     */
+    private function filterByLevelWithMinimum($codes, int $specificity, int $minimumCount)
+    {
+        // Define preferred level ranges
+        $levelRanges = [
+            1 => [5, 4, 3, 2, 1], // Specific: start with high levels
+            2 => [3, 4, 2, 5, 1], // Medium: prefer middle levels
+            3 => [1, 2, 3, 4, 5], // General: start with low levels
+        ];
+
+        $preferredOrder = $levelRanges[$specificity];
+        $result = collect();
+
+        // Try each level in preferred order until we have enough
+        foreach ($preferredOrder as $level) {
+            $atLevel = $codes->filter(function($code) use ($level) {
+                return $code['level'] == $level;
+            });
+
+            $result = $result->merge($atLevel);
+
+            if ($result->count() >= $minimumCount) {
+                break;
+            }
+        }
+
+        // If still not enough, add remaining codes
+        if ($result->count() < $minimumCount) {
+            $remaining = $codes->reject(function($code) use ($result) {
+                return $result->contains('cpv', $code['cpv']);
+            });
+            $result = $result->merge($remaining);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Calculate parent code from a CPV code string.
+     */
+    private function calculateParentCode(string $code): ?string
+    {
+        $trimmed = rtrim($code, '0');
+        if (strlen($trimmed) <= 2) {
+            return null;
+        }
+        $parentTrimmed = substr($trimmed, 0, -1) . '0';
+        return str_pad($parentTrimmed, 8, '0');
+    }
+
+    /**
+     * Check if $parentCode is a parent (direct or ancestor) of $childCode.
+     */
+    private function isParentOf(string $parentCode, string $childCode): bool
+    {
+        if ($parentCode === $childCode) {
+            return false;
+        }
+
+        // Check if parentCode is anywhere in the ancestry chain
+        $current = $childCode;
+        while ($current !== null) {
+            $calculated = $this->calculateParentCode($current);
+            if ($calculated === null) {
+                break;
+            }
+            if ($calculated === $parentCode) {
+                return true;
+            }
+            $current = $calculated;
+        }
+
+        return false;
     }
 }

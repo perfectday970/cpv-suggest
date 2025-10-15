@@ -14,13 +14,26 @@ class CpvCode extends Model
 
     protected $fillable = [
         'code',
+        'check_digit',
         'title',
         'level',
     ];
 
     protected $casts = [
         'level' => 'integer',
+        'check_digit' => 'integer',
     ];
+
+    /**
+     * Get full CPV code with check digit (e.g., "72000000-7").
+     */
+    public function getFullCodeAttribute(): string
+    {
+        if ($this->check_digit !== null) {
+            return $this->code . '-' . $this->check_digit;
+        }
+        return $this->code;
+    }
 
     /**
      * Calculate parent code from the code itself.
