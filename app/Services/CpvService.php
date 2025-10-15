@@ -225,6 +225,7 @@ PROMPT;
                     $out[] = [
                         'cpv' => $code->code,
                         'title' => $code->title,
+                        'level' => $code->level,
                         'path' => $this->formatPath($code->getPath()),
                         'confidence' => $confidence,
                         'source' => 'llm+validated',
@@ -241,6 +242,7 @@ PROMPT;
                     $out[] = [
                         'cpv' => $match->cpvCode->code,
                         'title' => $match->cpvCode->title,
+                        'level' => $match->cpvCode->level,
                         'path' => $this->formatPath($match->cpvCode->getPath()),
                         'confidence' => $confidence * 0.7, // Reduce confidence for synonym matches
                         'source' => 'synonym',

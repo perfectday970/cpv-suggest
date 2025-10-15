@@ -155,11 +155,16 @@ class CpvCodeSeeder extends Seeder
      * Calculate level based on code format.
      *
      * CPV codes use a hierarchical structure where the level is determined
-     * by the number of significant digits (excluding trailing zeros):
-     * - Level 1: 2 digits  (XX000000) e.g., 72000000
-     * - Level 2: 3-4 digits (XXYY0000) e.g., 72200000, 72210000
-     * - Level 3: 5-6 digits (XXYYZZ00) e.g., 72220000, 72222000
-     * - Level 4: 7-8 digits (XXYYZZKK) e.g., 72222200, 72222300
+     * by the number of significant digits (excluding trailing zeros).
+     *
+     * Each additional digit adds a level:
+     * - Level 1: 2 digits  (XX000000) e.g., 45000000
+     * - Level 2: 3 digits  (XXY00000) e.g., 45200000
+     * - Level 3: 4 digits  (XXYY0000) e.g., 45230000
+     * - Level 4: 5 digits  (XXYYY000) e.g., 45232000
+     * - Level 5: 6 digits  (XXYYYY00) e.g., 45232400
+     * - Level 6: 7 digits  (XXYYYYY0) e.g., 45232410
+     * - Level 7: 8 digits  (XXYYYYYY) e.g., 45232415
      */
     private function calculateLevel(string $code): int
     {
@@ -167,16 +172,9 @@ class CpvCodeSeeder extends Seeder
         $trimmed = rtrim($code, '0');
         $length = strlen($trimmed);
 
-        // Determine level based on significant digit count
-        if ($length <= 2) {
-            return 1;
-        } elseif ($length <= 4) {
-            return 2;
-        } elseif ($length <= 6) {
-            return 3;
-        } else {
-            return 4;
-        }
+        // Level = number of significant digits - 1
+        // (minimum level is 1 for 2-digit codes)
+        return max(1, $length - 1);
     }
 
 }
